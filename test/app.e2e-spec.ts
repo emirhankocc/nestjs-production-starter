@@ -5,6 +5,13 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
 
+process.env.JWT_ACCESS_SECRET ??= 'a'.repeat(32);
+process.env.JWT_ACCESS_EXPIRES_IN ??= '15m';
+process.env.JWT_REFRESH_SECRET ??= 'b'.repeat(32);
+process.env.JWT_REFRESH_EXPIRES_IN ??= '7d';
+process.env.DATABASE_URL ??=
+  'postgresql://postgres:postgres@localhost:5432/nestjs_starter?schema=public';
+
 describe('Health (e2e)', () => {
   let app: INestApplication<App>;
 
