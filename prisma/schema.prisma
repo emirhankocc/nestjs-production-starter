@@ -6,11 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
-  USER
-  ADMIN
-}
-
 model User {
   id              String           @id @default(uuid()) @db.Uuid
   email           String           @unique
@@ -33,4 +28,9 @@ model RefreshSession {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+enum Role {
+  USER
+  ADMIN
 }
