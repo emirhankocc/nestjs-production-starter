@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
   const port = configService.get<number>('PORT', 3000);
@@ -38,7 +39,7 @@ async function bootstrap() {
   await app.listen(port);
 }
 
-bootstrap().catch((error) => {
+bootstrap().catch((error: unknown) => {
   console.error('Application failed to start:', error);
   process.exit(1);
 });
