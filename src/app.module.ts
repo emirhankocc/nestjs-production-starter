@@ -18,9 +18,13 @@ import { PrismaModule } from './prisma/prisma.module';
         API_VERSION: Joi.string().min(1).default('1'),
         DATABASE_URL: Joi.string().uri().required(),
         JWT_ACCESS_SECRET: Joi.string().min(32).required(),
-        JWT_ACCESS_EXPIRES_IN: Joi.string().min(1).required(),
+        JWT_ACCESS_EXPIRES_IN: Joi.string()
+          .pattern(/^\d+[smhd]$/)
+          .required(),
         JWT_REFRESH_SECRET: Joi.string().min(32).required(),
-        JWT_REFRESH_EXPIRES_IN: Joi.string().min(1).required(),
+        JWT_REFRESH_EXPIRES_IN: Joi.string()
+          .pattern(/^\d+[smhd]$/)
+          .required(),
       }),
     }),
     PrismaModule,

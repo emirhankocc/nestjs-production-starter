@@ -22,3 +22,16 @@ export type AuthTokensResponse = {
   accessToken: string;
   refreshToken: string;
 };
+
+export type PreparedRefreshSession = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+};
+
+export type PreparedAuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+  session: PreparedRefreshSession;
+};

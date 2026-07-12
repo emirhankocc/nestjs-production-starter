@@ -13,6 +13,7 @@ export type UserWithPassword = SafeUser & {
 };
 
 export type CreateUserInput = {
+  id?: string;
   email: string;
   passwordHash: string;
 };

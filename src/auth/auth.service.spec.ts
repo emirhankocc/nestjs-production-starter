@@ -29,6 +29,7 @@ describe('AuthService', () => {
       findUnique: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
   };
   let jwtService: {
@@ -72,6 +73,7 @@ describe('AuthService', () => {
           refreshSession: {
             create: jest.fn().mockResolvedValue({ id: 'session-1' }),
             update: jest.fn().mockResolvedValue({ id: 'session-1' }),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           },
         }),
       ),
@@ -79,6 +81,7 @@ describe('AuthService', () => {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: 'session-1' }),
         update: jest.fn().mockResolvedValue({ id: 'session-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -174,11 +177,51 @@ describe('AuthService', () => {
         type: argon2.argon2id,
       });
       expect(usersService.createUser).toHaveBeenCalledWith(
-        {
+        expect.objectContaining({
+          id: expect.any(String) as string,
           email: 'user@example.com',
           passwordHash: 'hash:SecurePass123',
-        },
+        }),
         expect.any(Object),
+      );
+    });
+
+    it('hashes password and refresh token before the registration transaction', async () => {
+      usersService.findByEmail.mockResolvedValue(null);
+      usersService.createUser.mockResolvedValue(safeUser);
+      jwtService.sign
+        .mockReturnValueOnce('refresh-token')
+        .mockReturnValueOnce('access-token');
+
+      const callOrder: string[] = [];
+      (argon2.hash as jest.Mock).mockImplementation((value: string) => {
+        callOrder.push(`argon2:${value}`);
+        return Promise.resolve(`hash:${value}`);
+      });
+      prismaService.$transaction.mockImplementation(
+        (callback: (tx: unknown) => unknown) => {
+          callOrder.push('transaction');
+          return callback({
+            refreshSession: {
+              create: jest.fn().mockResolvedValue({ id: 'session-1' }),
+            },
+          });
+        },
+      );
+
+      await authService.register({
+        email: 'user@example.com',
+        password: 'SecurePass123',
+      });
+
+      expect(callOrder.indexOf('argon2:SecurePass123')).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(callOrder.indexOf('argon2:refresh-token')).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(callOrder.indexOf('transaction')).toBeGreaterThan(
+        callOrder.indexOf('argon2:refresh-token'),
       );
     });
 
@@ -307,7 +350,7 @@ describe('AuthService', () => {
     it('rotates a valid refresh token', async () => {
       const txRefreshSession = {
         create: jest.fn().mockResolvedValue({ id: 'session-2' }),
-        update: jest.fn().mockResolvedValue({ id: 'session-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       };
       prismaService.$transaction.mockImplementation(
         (
@@ -329,10 +372,10 @@ describe('AuthService', () => {
       expect(result.refreshToken).toBe('new-refresh-token');
     });
 
-    it('revokes the old session during rotation', async () => {
+    it('conditionally revokes the old session during rotation', async () => {
       const txRefreshSession = {
         create: jest.fn().mockResolvedValue({ id: 'session-2' }),
-        update: jest.fn().mockResolvedValue({ id: 'session-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       };
       prismaService.$transaction.mockImplementation(
         (
@@ -348,8 +391,13 @@ describe('AuthService', () => {
 
       await authService.refresh({ refreshToken: 'refresh-token' });
 
-      expect(txRefreshSession.update).toHaveBeenCalledWith({
-        where: { id: 'session-1' },
+      expect(txRefreshSession.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'session-1',
+          userId: 'user-1',
+          revokedAt: null,
+          expiresAt: { gt: expect.any(Date) as Date },
+        },
         data: { revokedAt: expect.any(Date) as Date },
       });
     });
@@ -357,7 +405,7 @@ describe('AuthService', () => {
     it('creates a replacement session during rotation', async () => {
       const txRefreshSession = {
         create: jest.fn().mockResolvedValue({ id: 'session-2' }),
-        update: jest.fn().mockResolvedValue({ id: 'session-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       };
       prismaService.$transaction.mockImplementation(
         (
@@ -381,6 +429,87 @@ describe('AuthService', () => {
           expiresAt: expect.any(Date) as Date,
         },
       });
+    });
+
+    it('hashes the replacement refresh token before the transaction', async () => {
+      const txRefreshSession = {
+        create: jest.fn().mockResolvedValue({ id: 'session-2' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      };
+      const callOrder: string[] = [];
+      (argon2.hash as jest.Mock).mockImplementation((value: string) => {
+        callOrder.push(`argon2:${value}`);
+        return Promise.resolve(`hash:${value}`);
+      });
+      prismaService.$transaction.mockImplementation(
+        (
+          callback: (tx: {
+            refreshSession: typeof txRefreshSession;
+          }) => unknown,
+        ) => {
+          callOrder.push('transaction');
+          return callback({ refreshSession: txRefreshSession });
+        },
+      );
+      jwtService.sign.mockReset();
+      jwtService.sign
+        .mockReturnValueOnce('new-refresh-token')
+        .mockReturnValueOnce('new-access-token');
+
+      await authService.refresh({ refreshToken: 'refresh-token' });
+
+      expect(
+        callOrder.indexOf('argon2:new-refresh-token'),
+      ).toBeGreaterThanOrEqual(0);
+      expect(callOrder.indexOf('transaction')).toBeGreaterThan(
+        callOrder.indexOf('argon2:new-refresh-token'),
+      );
+    });
+
+    it('does not create a replacement session when conditional revocation count is 0', async () => {
+      const txRefreshSession = {
+        create: jest.fn().mockResolvedValue({ id: 'session-2' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      };
+      prismaService.$transaction.mockImplementation(
+        (
+          callback: (tx: {
+            refreshSession: typeof txRefreshSession;
+          }) => unknown,
+        ) => callback({ refreshSession: txRefreshSession }),
+      );
+      jwtService.sign.mockReset();
+      jwtService.sign
+        .mockReturnValueOnce('new-refresh-token')
+        .mockReturnValueOnce('new-access-token');
+
+      await expect(
+        authService.refresh({ refreshToken: 'refresh-token' }),
+      ).rejects.toThrow(new UnauthorizedException('Invalid refresh token.'));
+
+      expect(txRefreshSession.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a replayed refresh token when the session was already revoked', async () => {
+      const txRefreshSession = {
+        create: jest.fn().mockResolvedValue({ id: 'session-2' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      };
+      prismaService.$transaction.mockImplementation(
+        (
+          callback: (tx: {
+            refreshSession: typeof txRefreshSession;
+          }) => unknown,
+        ) => callback({ refreshSession: txRefreshSession }),
+      );
+      jwtService.sign.mockReset();
+      jwtService.sign
+        .mockReturnValueOnce('new-refresh-token')
+        .mockReturnValueOnce('new-access-token');
+
+      await expect(
+        authService.refresh({ refreshToken: 'refresh-token' }),
+      ).rejects.toThrow(new UnauthorizedException('Invalid refresh token.'));
     });
 
     it('throws generic Unauthorized for revoked session', async () => {
@@ -475,6 +604,74 @@ describe('AuthService', () => {
 
       expect(prismaService.refreshSession.update).not.toHaveBeenCalled();
     });
+
+    it('returns idempotently for missing session', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        sessionId: 'session-1',
+      });
+      prismaService.refreshSession.findUnique.mockResolvedValue(null);
+
+      await expect(
+        authService.logout({ refreshToken: 'refresh-token' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('returns idempotently for token-hash mismatch', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        sessionId: 'session-1',
+      });
+      prismaService.refreshSession.findUnique.mockResolvedValue({
+        id: 'session-1',
+        userId: 'user-1',
+        tokenHash: 'hash:refresh-token',
+        expiresAt: new Date(Date.now() + 60_000),
+        revokedAt: null,
+        createdAt: new Date(),
+      });
+      (argon2.verify as jest.Mock).mockResolvedValueOnce(false);
+
+      await expect(
+        authService.logout({ refreshToken: 'refresh-token' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('propagates unexpected Prisma update failures', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        sessionId: 'session-1',
+      });
+      prismaService.refreshSession.findUnique.mockResolvedValue({
+        id: 'session-1',
+        userId: 'user-1',
+        tokenHash: 'hash:refresh-token',
+        expiresAt: new Date(Date.now() + 60_000),
+        revokedAt: null,
+        createdAt: new Date(),
+      });
+      prismaService.refreshSession.update.mockRejectedValue(
+        new Error('database unavailable'),
+      );
+
+      await expect(
+        authService.logout({ refreshToken: 'refresh-token' }),
+      ).rejects.toThrow('database unavailable');
+    });
+
+    it('propagates unexpected Prisma lookup failures', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        sessionId: 'session-1',
+      });
+      prismaService.refreshSession.findUnique.mockRejectedValue(
+        new Error('database unavailable'),
+      );
+
+      await expect(
+        authService.logout({ refreshToken: 'refresh-token' }),
+      ).rejects.toThrow('database unavailable');
+    });
   });
 
   describe('token safety', () => {
@@ -487,7 +684,6 @@ describe('AuthService', () => {
 
       const txRefreshSession = {
         create: jest.fn().mockResolvedValue({ id: 'session-1' }),
-        update: jest.fn(),
       };
       prismaService.$transaction.mockImplementation(
         (

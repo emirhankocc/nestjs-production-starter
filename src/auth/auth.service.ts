@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,6 +19,8 @@ import { RegisterDto } from './dto/register.dto';
 import {
   AccessTokenPayload,
   AuthTokensResponse,
+  PreparedAuthTokens,
+  PreparedRefreshSession,
   RefreshTokenPayload,
 } from './types/auth.types';
 
@@ -44,18 +46,28 @@ export class AuthService {
       throw new ConflictException('Email is already registered');
     }
 
+    const userId = randomUUID();
     const passwordHash = await this.hashPassword(dto.password);
+    const preparedSafeUser: SafeUser = {
+      id: userId,
+      email,
+      role: Role.USER,
+      isActive: true,
+      createdAt: new Date(),
+    };
+    const preparedTokens = await this.prepareAuthTokens(preparedSafeUser);
 
     return this.prisma.$transaction(async (tx) => {
       const user = await this.usersService.createUser(
-        { email, passwordHash },
+        { id: userId, email, passwordHash },
         tx,
       );
-      const tokens = await this.createAuthTokens(user, tx);
+      await this.persistRefreshSession(preparedTokens.session, tx);
 
       return {
         user,
-        ...tokens,
+        accessToken: preparedTokens.accessToken,
+        refreshToken: preparedTokens.refreshToken,
       };
     });
   }
@@ -83,11 +95,13 @@ export class AuthService {
       isActive: user.isActive,
       createdAt: user.createdAt,
     };
-    const tokens = await this.createAuthTokens(safeUser);
+    const preparedTokens = await this.prepareAuthTokens(safeUser);
+    await this.persistRefreshSession(preparedTokens.session);
 
     return {
       user: safeUser,
-      ...tokens,
+      accessToken: preparedTokens.accessToken,
+      refreshToken: preparedTokens.refreshToken,
     };
   }
 
@@ -127,78 +141,103 @@ export class AuthService {
       );
     }
 
+    const preparedTokens = await this.prepareAuthTokens(user);
+
     return this.prisma.$transaction(async (tx) => {
-      await tx.refreshSession.update({
-        where: { id: session.id },
+      const revoked = await tx.refreshSession.updateMany({
+        where: {
+          id: session.id,
+          userId: payload.sub,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
         data: { revokedAt: new Date() },
       });
 
-      const tokens = await this.createAuthTokens(user, tx);
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException(
+          AuthService.INVALID_REFRESH_TOKEN_MESSAGE,
+        );
+      }
+
+      await this.persistRefreshSession(preparedTokens.session, tx);
 
       return {
         user,
-        ...tokens,
+        accessToken: preparedTokens.accessToken,
+        refreshToken: preparedTokens.refreshToken,
       };
     });
   }
 
   async logout(dto: LogoutDto): Promise<void> {
-    try {
-      const payload = await this.verifyRefreshToken(dto.refreshToken);
-      const session = await this.prisma.refreshSession.findUnique({
-        where: { id: payload.sessionId },
-      });
+    const payload = await this.parseRefreshToken(dto.refreshToken);
 
-      if (
-        !session ||
-        session.userId !== payload.sub ||
-        session.revokedAt !== null ||
-        session.expiresAt <= new Date()
-      ) {
-        return;
-      }
-
-      const tokenMatches = await this.verifyRefreshTokenHash(
-        session.tokenHash,
-        dto.refreshToken,
-      );
-
-      if (!tokenMatches) {
-        return;
-      }
-
-      await this.prisma.refreshSession.update({
-        where: { id: session.id },
-        data: { revokedAt: new Date() },
-      });
-    } catch {
+    if (!payload) {
       return;
     }
+
+    const session = await this.prisma.refreshSession.findUnique({
+      where: { id: payload.sessionId },
+    });
+
+    if (
+      !session ||
+      session.userId !== payload.sub ||
+      session.revokedAt !== null ||
+      session.expiresAt <= new Date()
+    ) {
+      return;
+    }
+
+    const tokenMatches = await this.verifyRefreshTokenHash(
+      session.tokenHash,
+      dto.refreshToken,
+    );
+
+    if (!tokenMatches) {
+      return;
+    }
+
+    await this.prisma.refreshSession.update({
+      where: { id: session.id },
+      data: { revokedAt: new Date() },
+    });
   }
 
-  private async createAuthTokens(
-    user: SafeUser,
-    tx?: Prisma.TransactionClient,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
-    const client = tx ?? this.prisma;
+  private async prepareAuthTokens(user: SafeUser): Promise<PreparedAuthTokens> {
     const sessionId = randomUUID();
     const refreshToken = this.signRefreshToken(user.id, sessionId);
     const tokenHash = await this.hashRefreshToken(refreshToken);
     const expiresAt = this.getRefreshExpiresAt();
+    const accessToken = this.signAccessToken(user);
 
-    await client.refreshSession.create({
-      data: {
+    return {
+      accessToken,
+      refreshToken,
+      session: {
         id: sessionId,
         userId: user.id,
         tokenHash,
         expiresAt,
       },
-    });
-
-    return {
-      accessToken: this.signAccessToken(user),
-      refreshToken,
     };
+  }
+
+  private async persistRefreshSession(
+    session: PreparedRefreshSession,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? this.prisma;
+
+    await client.refreshSession.create({
+      data: {
+        id: session.id,
+        userId: session.userId,
+        tokenHash: session.tokenHash,
+        expiresAt: session.expiresAt,
+      },
+    });
   }
 
   private signAccessToken(user: SafeUser): string {
@@ -230,9 +269,9 @@ export class AuthService {
     });
   }
 
-  private async verifyRefreshToken(
+  private async parseRefreshToken(
     refreshToken: string,
-  ): Promise<RefreshTokenPayload> {
+  ): Promise<RefreshTokenPayload | null> {
     try {
       const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
         refreshToken,
@@ -242,21 +281,27 @@ export class AuthService {
       );
 
       if (!payload.sub || !payload.sessionId) {
-        throw new UnauthorizedException(
-          AuthService.INVALID_REFRESH_TOKEN_MESSAGE,
-        );
+        return null;
       }
 
       return payload;
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
+    } catch {
+      return null;
+    }
+  }
 
+  private async verifyRefreshToken(
+    refreshToken: string,
+  ): Promise<RefreshTokenPayload> {
+    const payload = await this.parseRefreshToken(refreshToken);
+
+    if (!payload) {
       throw new UnauthorizedException(
         AuthService.INVALID_REFRESH_TOKEN_MESSAGE,
       );
     }
+
+    return payload;
   }
 
   private getRefreshExpiresAt(): Date {

@@ -60,6 +60,7 @@ export class UsersService {
     try {
       return await client.user.create({
         data: {
+          ...(input.id ? { id: input.id } : {}),
           email: this.normalizeEmail(input.email),
           passwordHash: input.passwordHash,
         },
