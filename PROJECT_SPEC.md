@@ -1,57 +1,93 @@
-Goal
+# Project Specification
 
-Develop a reusable authentication starter that can be used in production projects.
+## Project Name
 
-Target Users
+NestJS Production Starter
 
-Developers
+## Goal
 
-Small startups
+Build a reusable, production-oriented backend starter using NestJS, TypeScript, PostgreSQL, Prisma and Docker.
 
-SaaS founders
+The project demonstrates backend architecture, authentication, authorization, validation, testing, API documentation and automated quality checks.
 
-Learning purposes
+## Target Users
 
-Core Features
+- Backend developers
+- Full-stack developers
+- SaaS developers
+- Small software teams
+- Developers learning production-oriented NestJS practices
 
-JWT Authentication
+## Version 1 Features
 
-Refresh Tokens
+- Environment configuration and validation
+- PostgreSQL integration
+- Prisma ORM
+- User registration
+- User login
+- JWT access tokens
+- Refresh-token rotation
+- Secure logout
+- Password hashing
+- USER and ADMIN roles
+- Protected profile endpoint
+- Admin-only endpoint
+- Request validation
+- Centralized exception handling
+- Swagger documentation
+- Health-check endpoint
+- Docker Compose development environment
+- Unit and integration tests
+- GitHub Actions CI
 
-Role Based Authorization
+## Non-Goals for Version 1
 
-Swagger
+- Microservices
+- Redis
+- Message queues
+- Kafka
+- Kubernetes
+- Social authentication
+- Email verification
+- Password reset
+- Multi-factor authentication
+- File uploads
+- Payment processing
+- Notification systems
 
-Docker
+## Technical Stack
 
-Prisma
+- NestJS
+- TypeScript
+- PostgreSQL
+- Prisma
+- JWT
+- Docker Compose
+- Jest
+- Swagger
+- GitHub Actions
 
-PostgreSQL
+## Security Requirements
 
-Validation
+- Passwords must never be stored as plain text.
+- Refresh tokens must never be stored as plain text.
+- Secrets must never be committed.
+- Input must be validated.
+- Authorization must be enforced on the backend.
+- Database models must not be returned directly from API endpoints.
+- Authentication failure messages must not expose sensitive details.
 
-Testing
+## Quality Requirements
 
-GitHub Actions
+- Every completed sprint must pass lint, test and build.
+- Unnecessary dependencies must not be installed.
+- Modules must have clear responsibilities.
+- Important authentication flows must be tested.
+- Public endpoints and DTOs must be documented.
+- Implementation decisions must be explainable in a technical interview.
 
-Not Included
+## AI-Assisted Development
 
-Redis
+AI tools may be used for planning, implementation support, debugging and code review.
 
-Microservices
-
-Email Verification
-
-OAuth
-
-Password Reset
-
-SMS
-
-Rate Limiting (v2)
-
-Queue
-
-Performance Target
-
-<200ms average response time
+Architecture decisions, testing, verification and final responsibility remain with the project author.
