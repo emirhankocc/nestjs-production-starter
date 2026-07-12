@@ -1,10 +1,23 @@
-# nestjs-auth-starter
-Production-ready NestJS authentication starter with JWT, Prisma, Docker and CI/CD.
+# NestJS Production Starter
 
-NestJS Authentication Starter
+A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, Prisma, JWT and Docker.
 
-Production-oriented authentication boilerplate.
+## Status
 
-Status
+The project is currently under active development.
 
-Planning
+## Planned Version 1
+
+- Environment validation
+- PostgreSQL and Prisma
+- JWT authentication
+- Refresh-token rotation
+- Role-based authorization
+- Swagger documentation
+- Docker support
+- Automated tests
+- GitHub Actions CI
+
+## Development Approach
+
+The project is developed incrementally through defined sprints. AI tools may support planning, implementation and code review, while architecture decisions, validation and final responsibility remain with the project author.
