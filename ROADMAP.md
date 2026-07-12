@@ -1,31 +1,72 @@
-Sprint 1
+# Roadmap
 
-Project Setup
+## Sprint 0 — Baseline
 
-Sprint 2
+- Verify the existing NestJS application
+- Confirm lint, test and build commands
+- Define the project scope
+- Define AI development rules
+- Review current dependencies
 
-Prisma
+## Sprint 1 — Application Foundation
 
-Sprint 3
+- Environment configuration
+- Environment validation
+- Global validation pipe
+- API prefix
+- URI versioning
+- Swagger documentation
+- Health-check endpoint
 
-Authentication
+## Sprint 2 — Database Foundation
 
-Sprint 4
+- PostgreSQL with Docker Compose
+- Prisma installation
+- Prisma configuration
+- User model
+- Refresh-session model
+- Initial migration
+- Prisma service
 
-Authorization
+## Sprint 3 — Authentication
 
-Sprint 5
+- User registration
+- User login
+- Password hashing
+- Access-token generation
+- Refresh-token rotation
+- Secure logout
 
-Docker
+## Sprint 4 — Authorization
 
-Sprint 6
+- Authentication guard
+- USER and ADMIN roles
+- Role decorator
+- Role guard
+- Protected profile endpoint
+- Admin-only endpoint
 
-Testing
+## Sprint 5 — Reliability and Security
 
-Sprint 7
+- Centralized exception handling
+- Security headers
+- Rate limiting
+- Response-data review
+- Authentication security review
 
-CI/CD
+## Sprint 6 — Testing
 
-Sprint 8
+- User service unit tests
+- Authentication service unit tests
+- Registration integration test
+- Login integration test
+- Refresh-token integration test
+- Authorization integration test
 
-Documentation
+## Sprint 7 — Delivery
+
+- Production Dockerfile
+- GitHub Actions CI
+- Complete README
+- Security documentation
+- Version 1 release
