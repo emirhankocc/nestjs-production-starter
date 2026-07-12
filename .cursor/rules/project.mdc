@@ -1,0 +1,27 @@
+---
+description: Project-wide development rules
+alwaysApply: true
+---
+
+# Project Rules
+
+- Read PROJECT_SPEC.md and ROADMAP.md before making architectural changes.
+- Implement only the requested sprint or task.
+- Never generate or refactor the entire project at once.
+- Do not introduce technologies outside the approved project scope.
+- Do not add Redis, queues, microservices, Kafka or Kubernetes.
+- Prefer standard NestJS patterns over custom abstractions.
+- Use NestJS dependency injection correctly.
+- Use DTOs and class-validator for request validation.
+- Never store passwords or refresh tokens as plain text.
+- Never expose password hashes, refresh-token hashes or internal fields.
+- Do not return Prisma models directly from controllers.
+- Avoid circular dependencies.
+- Do not create generic repositories or base services unless a real duplication exists.
+- Do not modify unrelated files.
+- Explain major architectural decisions before implementing them.
+- Every completed task must pass lint, tests and build.
+- List every created or modified file after implementation.
+- List commands that must be run manually.
+- Never claim that a command passed unless it was actually executed.
+- Stop after completing the requested scope.
