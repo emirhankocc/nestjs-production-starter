@@ -1,5 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { HealthService } from './health.service';
 
 @ApiTags('health')
@@ -18,8 +23,12 @@ export class HealthController {
         service: { type: 'string', example: 'nestjs-production-starter' },
         timestamp: { type: 'string', example: '2026-07-13T00:00:00.000Z' },
         uptime: { type: 'number', example: 12.345 },
+        database: { type: 'string', example: 'up' },
       },
     },
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'Service unavailable when the database is not reachable',
   })
   getHealth() {
     return this.healthService.getHealth();
