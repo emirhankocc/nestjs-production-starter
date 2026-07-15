@@ -1,8 +1,8 @@
-import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { configureApplication } from './common/bootstrap/configure-application';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -10,22 +10,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   const port = configService.get<number>('PORT', 3000);
-  const apiPrefix = configService.get<string>('API_PREFIX', 'api');
-  const apiVersion = configService.get<string>('API_VERSION', '1');
 
-  app.setGlobalPrefix(apiPrefix);
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: apiVersion,
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  configureApplication(app, configService);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('NestJS Production Starter')

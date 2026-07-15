@@ -4,9 +4,77 @@ A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, 
 
 ## Status
 
-Sprint 4 (Authorization) is complete.
+Sprint 5 (Reliability and Error Handling) is complete.
 
-The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation and role-based authorization for protected endpoints.
+The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization and standardized API error responses with request IDs.
+
+## Current Functionality (Sprint 5)
+
+- Global request ID middleware using `x-request-id`
+- Standardized error response format across the API
+- Global exception filter with safe Prisma error normalization
+- Structured validation error details
+- Safe production error behavior without stack traces or secrets
+
+## Error Responses
+
+All API errors use this standard shape:
+
+```json
+{
+  "statusCode": 401,
+  "error": "Unauthorized",
+  "message": "Unauthorized.",
+  "path": "/api/v1/users/me",
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "timestamp": "2026-07-13T00:00:00.000Z"
+}
+```
+
+Validation failures return `400` with structured `details`:
+
+```json
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "path": "/api/v1/auth/register",
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "timestamp": "2026-07-13T00:00:00.000Z",
+  "details": [
+    {
+      "field": "email",
+      "messages": [
+        "email must be an email"
+      ]
+    }
+  ]
+}
+```
+
+### Request ID
+
+- Clients may send `x-request-id` with any non-empty string.
+- When omitted, the API generates a UUID with `crypto.randomUUID()`.
+- The same value is attached to the request and returned in the `x-request-id` response header.
+
+### Safe Production Errors
+
+- Stack traces are never returned.
+- Raw Prisma errors, database hostnames, model names and secrets are never exposed.
+- Unknown server errors return `500` with `An unexpected error occurred.`
+
+### HTTP Status Examples
+
+| Scenario | Status | `error` |
+|----------|--------|---------|
+| Validation failure | `400` | `Bad Request` |
+| Missing or invalid access token | `401` | `Unauthorized` |
+| Insufficient role | `403` | `Forbidden` |
+| Missing record | `404` | `Not Found` |
+| Duplicate email | `409` | `Conflict` |
+| Unexpected server error | `500` | `Internal Server Error` |
+| Database unavailable | `503` | `Service Unavailable` |
 
 ## Current Functionality (Sprint 4)
 
@@ -310,3 +378,12 @@ npm run build
 - `GET /api/v1/admin/ping` admin proof endpoint
 - Swagger bearer authentication for protected routes
 - Authorization unit and e2e tests
+
+## Sprint 5 — Reliability and Error Handling (Complete)
+
+- Global `x-request-id` middleware
+- Standardized API error response format
+- Global exception filter
+- Structured validation error details
+- Safe Prisma error normalization
+- Reliability unit and e2e tests
