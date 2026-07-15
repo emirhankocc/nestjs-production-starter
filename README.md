@@ -4,19 +4,17 @@ A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, 
 
 ## Status
 
-Sprint 3 (Authentication) is complete.
+Sprint 4 (Authorization) is complete.
 
-The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint and JWT authentication with refresh-token rotation.
+The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation and role-based authorization for protected endpoints.
 
-Protected profile endpoints and role-based authorization are planned for Sprint 4 and are not implemented yet.
+## Current Functionality (Sprint 4)
 
-## Current Functionality (Sprint 3)
-
-- User registration with Argon2id password hashing
-- User login with generic authentication failure messages
-- JWT access tokens and refresh-token rotation
-- Secure logout with hashed refresh-session storage
-- Authentication endpoints documented in Swagger
+- Custom access-token guard without Passport
+- Authenticated profile endpoint at `GET /api/v1/users/me`
+- Role-based authorization with `@Roles()` metadata
+- Admin proof endpoint at `GET /api/v1/admin/ping`
+- Swagger bearer authentication for protected endpoints
 
 ## Authentication Endpoints
 
@@ -51,6 +49,8 @@ Example response:
 }
 ```
 
+Public registration always creates `USER` accounts. `ADMIN` users must currently be created or promoted directly in the development database.
+
 ### Login
 
 ```bash
@@ -75,6 +75,64 @@ curl -X POST http://localhost:3000/api/v1/auth/logout \
   -d '{"refreshToken":"<refresh-token>"}'
 ```
 
+## Authorization
+
+Protected endpoints require a short-lived access token in the `Authorization` header:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+### Profile
+
+```bash
+curl http://localhost:3000/api/v1/users/me \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Example response:
+
+```json
+{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "email": "user@example.com",
+  "role": "USER",
+  "isActive": true,
+  "createdAt": "2026-07-13T00:00:00.000Z"
+}
+```
+
+Behavior:
+
+- `200` when the access token is valid and the user exists and is active
+- `401 Unauthorized.` when the token is missing, invalid, expired, or the user no longer exists or is inactive
+
+The profile is loaded from the database using `payload.sub`; it is not returned directly from the JWT payload.
+
+### Admin Proof Endpoint
+
+```bash
+curl http://localhost:3000/api/v1/admin/ping \
+  -H "Authorization: Bearer <admin-access-token>"
+```
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "message": "Admin access granted"
+}
+```
+
+Behavior:
+
+- `200` when the access token is valid and the user role is `ADMIN`
+- `401 Unauthorized.` when the access token is missing or invalid
+- `403 Forbidden` when the access token is valid but the role is not `ADMIN`
+
+There is no admin management, permission management, or user CRUD in this sprint.
+
 ## Token and Session Model
 
 - Access tokens are short-lived JWTs signed with `JWT_ACCESS_SECRET`.
@@ -85,9 +143,9 @@ curl -X POST http://localhost:3000/api/v1/auth/logout \
 
 ## Current Limitations
 
-- No protected profile endpoint yet
-- No role-based authorization yet
-- No access-token guards yet
+- No admin management endpoints
+- No permission management framework
+- No user CRUD or profile update endpoints
 - No logout-all or session listing
 
 ## Planned Version 1
@@ -170,6 +228,14 @@ Generate the Prisma client:
 npx prisma generate
 ```
 
+Promote a user to `ADMIN` in the development database:
+
+```sql
+UPDATE "User" SET role = 'ADMIN' WHERE email = 'user@example.com';
+```
+
+Log in again after promotion so the new access token contains the updated role.
+
 ## Development
 
 ```bash
@@ -234,3 +300,13 @@ npm run build
 - Refresh-token rotation
 - Secure logout with hashed refresh sessions
 - Authentication unit tests
+
+## Sprint 4 — Authorization (Complete)
+
+- Custom `AccessTokenGuard` without Passport
+- `@CurrentUser()` decorator
+- `GET /api/v1/users/me` protected profile endpoint
+- `@Roles()` decorator and `RolesGuard`
+- `GET /api/v1/admin/ping` admin proof endpoint
+- Swagger bearer authentication for protected routes
+- Authorization unit and e2e tests
