@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -12,6 +13,7 @@ import {
   ErrorResponseBody,
   ValidationErrorDetail,
 } from '../errors/error-response.types';
+import { UnhandledExceptionLog } from '../logging/logging.types';
 import { RequestWithId } from '../types/request-with-id.types';
 import { VALIDATION_FAILED_MESSAGE } from '../validation/validation-pipe.factory';
 
@@ -30,8 +32,17 @@ const PRISMA_CONFLICT_MESSAGE = 'A record with this value already exists.';
 const PRISMA_NOT_FOUND_MESSAGE = 'The requested record was not found.';
 const PRISMA_UNAVAILABLE_MESSAGE = 'Service is temporarily unavailable.';
 
+const EXPECTED_CLIENT_ERROR_STATUSES = new Set([
+  HttpStatus.BAD_REQUEST,
+  HttpStatus.UNAUTHORIZED,
+  HttpStatus.FORBIDDEN,
+  HttpStatus.CONFLICT,
+]);
+
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
   constructor(private readonly configService: ConfigService) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -39,6 +50,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<RequestWithId>();
     const normalized = this.normalizeException(exception);
+
+    if (this.shouldLogUnhandledException(exception, normalized.statusCode)) {
+      this.logUnhandledException(exception, request);
+    }
 
     const body: ErrorResponseBody = {
       statusCode: normalized.statusCode,
@@ -51,6 +66,47 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     };
 
     response.status(normalized.statusCode).json(body);
+  }
+
+  private shouldLogUnhandledException(
+    exception: unknown,
+    statusCode: number,
+  ): boolean {
+    if (EXPECTED_CLIENT_ERROR_STATUSES.has(statusCode)) {
+      return false;
+    }
+
+    if (exception instanceof HttpException) {
+      return statusCode >= 500;
+    }
+
+    return true;
+  }
+
+  private logUnhandledException(
+    exception: unknown,
+    request: RequestWithId,
+  ): void {
+    const logEntry: UnhandledExceptionLog = {
+      event: 'unhandled_exception',
+      requestId: request.requestId ?? 'unknown',
+      method: request.method,
+      path: request.path,
+      exceptionName: this.resolveExceptionName(exception),
+      ...(exception instanceof Error && exception.stack
+        ? { stack: exception.stack }
+        : {}),
+    };
+
+    this.logger.error(JSON.stringify(logEntry));
+  }
+
+  private resolveExceptionName(exception: unknown): string {
+    if (exception instanceof Error) {
+      return exception.name;
+    }
+
+    return 'UnknownException';
   }
 
   private normalizeException(exception: unknown): {

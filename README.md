@@ -4,9 +4,70 @@ A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, 
 
 ## Status
 
-Sprint 5 (Reliability and Error Handling) is complete.
+Sprint 6 (Structured Application Logging) is complete.
 
-The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization and standardized API error responses with request IDs.
+The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs and structured HTTP logging using the built-in NestJS Logger.
+
+## Current Functionality (Sprint 6)
+
+- Structured HTTP request-completion logging
+- Request ID correlation across logs and responses
+- Log-level routing for `2xx`/`3xx`, `4xx` and `5xx`
+- Server-side logging for unknown and infrastructure errors
+- Safe startup logging without secrets
+
+## Structured Logging
+
+The application uses the built-in NestJS `Logger` with stable JSON log entries.
+
+### HTTP Request Completion
+
+Each completed HTTP request produces one log entry:
+
+```json
+{
+  "event": "http_request_completed",
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "method": "POST",
+  "path": "/api/v1/auth/login",
+  "statusCode": 200,
+  "durationMs": 42.15
+}
+```
+
+Fields included:
+
+- `requestId`
+- `method`
+- `path`
+- `statusCode`
+- `durationMs`
+
+Log levels:
+
+- `2xx` and `3xx`: `log`
+- `4xx`: `warn`
+- `5xx`: `error`
+
+### Request ID Correlation
+
+The `requestId` in HTTP logs matches the `x-request-id` response header and the `requestId` field in API error responses.
+
+### Security
+
+The logging layer does not write:
+
+- request bodies
+- response bodies
+- `Authorization` headers
+- cookies
+- passwords
+- access tokens
+- refresh tokens
+- database connection strings
+- environment secrets
+
+Expected client errors such as `400`, `401`, `403` and `409` are covered by HTTP completion warning logs only. Unknown internal and infrastructure failures are logged separately as `unhandled_exception` entries without changing the public API error format.
 
 ## Current Functionality (Sprint 5)
 
@@ -387,3 +448,12 @@ npm run build
 - Structured validation error details
 - Safe Prisma error normalization
 - Reliability unit and e2e tests
+
+## Sprint 6 — Structured Application Logging (Complete)
+
+- HTTP request-completion logging middleware
+- Structured JSON log entries with request ID correlation
+- Built-in NestJS `Logger` usage
+- Server-side logging for unknown and infrastructure errors
+- Safe application startup logging
+- Logging unit and e2e tests

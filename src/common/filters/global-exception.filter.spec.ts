@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,9 +11,11 @@ import { Prisma } from '@prisma/client';
 import { Response } from 'express';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { RequestWithId } from '../types/request-with-id.types';
+import { UnhandledExceptionLog } from '../logging/logging.types';
 
 describe('GlobalExceptionFilter', () => {
   let filter: GlobalExceptionFilter;
+  let errorLogSpy: jest.SpyInstance;
   let response: {
     status: jest.Mock;
     json: jest.Mock;
@@ -28,12 +31,18 @@ describe('GlobalExceptionFilter', () => {
     }) as ArgumentsHost;
 
   beforeEach(() => {
+    errorLogSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
     filter = new GlobalExceptionFilter({
       get: jest.fn(),
     } as unknown as ConfigService);
 
     request = {
       url: '/api/v1/auth/login',
+      method: 'POST',
+      path: '/api/v1/auth/login',
       requestId: 'req-123',
     } as RequestWithId;
 
@@ -41,6 +50,10 @@ describe('GlobalExceptionFilter', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
     };
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('formats UnauthorizedException', () => {
@@ -215,5 +228,47 @@ describe('GlobalExceptionFilter', () => {
         ],
       }),
     );
+  });
+
+  it('logs unknown errors server-side with requestId', () => {
+    const error = new Error('database host postgres:5432 failed');
+    error.stack =
+      'Error: database host postgres:5432 failed\n    at test.ts:1:1';
+
+    filter.catch(error, createHost());
+
+    expect(errorLogSpy).toHaveBeenCalledTimes(1);
+    const logEntry = JSON.parse(
+      (errorLogSpy.mock.calls[0] as [string] | undefined)?.[0] ?? '{}',
+    ) as UnhandledExceptionLog;
+
+    expect(logEntry.event).toBe('unhandled_exception');
+    expect(logEntry.requestId).toBe('req-123');
+    expect(logEntry.method).toBe('POST');
+    expect(logEntry.path).toBe('/api/v1/auth/login');
+    expect(logEntry.exceptionName).toBe('Error');
+    expect(logEntry.stack).toContain('database host postgres:5432 failed');
+  });
+
+  it('does not log expected 401 responses as unhandled server errors', () => {
+    filter.catch(new UnauthorizedException('Unauthorized.'), createHost());
+
+    expect(errorLogSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps Prisma raw metadata out of public responses while logging infrastructure failures', () => {
+    const prismaError = new Prisma.PrismaClientInitializationError(
+      'postgresql://postgres:postgres@localhost:5432/nestjs_starter',
+      '7.8.0',
+    );
+
+    filter.catch(prismaError, createHost());
+
+    const body = getResponseBody();
+    const serialized = JSON.stringify(body);
+
+    expect(body.statusCode).toBe(503);
+    expect(serialized).not.toContain('postgresql://');
+    expect(errorLogSpy).toHaveBeenCalledTimes(1);
   });
 });
