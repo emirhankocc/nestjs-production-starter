@@ -1,4 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
@@ -12,9 +13,11 @@ import { Roles } from '../access-control/decorators/roles.decorator';
 import { AccessTokenGuard } from '../access-control/guards/access-token.guard';
 import { RolesGuard } from '../access-control/guards/roles.guard';
 import { AdminPingResponseDto } from './dto/admin-ping-response.dto';
+import { THROTTLE_AUTH } from '../common/throttling/throttle.constants';
 
 @ApiTags('admin')
 @Controller({ path: 'admin', version: '1' })
+@SkipThrottle({ [THROTTLE_AUTH]: true })
 @UseGuards(AccessTokenGuard, RolesGuard)
 @ApiBearerAuth('access-token')
 export class AdminController {

@@ -4,12 +4,20 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import {
+  THROTTLE_AUTH,
+  THROTTLE_DEFAULT,
+  THROTTLE_TOO_MANY_REQUESTS_MESSAGE,
+} from './common/throttling/throttle.constants';
+import { shouldSkipDocumentationThrottling } from './common/throttling/throttle-skip-if';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -33,12 +41,43 @@ import { PrismaModule } from './prisma/prisma.module';
         JWT_REFRESH_EXPIRES_IN: Joi.string()
           .pattern(/^\d+[smhd]$/)
           .required(),
+        THROTTLE_TTL_MS: Joi.number().integer().positive().default(60000),
+        THROTTLE_LIMIT: Joi.number().integer().positive().default(100),
+        AUTH_THROTTLE_TTL_MS: Joi.number().integer().positive().default(60000),
+        AUTH_THROTTLE_LIMIT: Joi.number().integer().positive().default(10),
+        TRUST_PROXY: Joi.boolean().default(false),
+      }),
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          {
+            name: THROTTLE_DEFAULT,
+            ttl: configService.get<number>('THROTTLE_TTL_MS', 60000),
+            limit: configService.get<number>('THROTTLE_LIMIT', 100),
+          },
+          {
+            name: THROTTLE_AUTH,
+            ttl: configService.get<number>('AUTH_THROTTLE_TTL_MS', 60000),
+            limit: configService.get<number>('AUTH_THROTTLE_LIMIT', 10),
+          },
+        ],
+        errorMessage: THROTTLE_TOO_MANY_REQUESTS_MESSAGE,
+        skipIf: shouldSkipDocumentationThrottling,
       }),
     }),
     PrismaModule,
     HealthModule,
     AuthModule,
     AdminModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule implements NestModule {

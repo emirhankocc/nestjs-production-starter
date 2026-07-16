@@ -4,9 +4,95 @@ A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, 
 
 ## Status
 
-Sprint 6 (Structured Application Logging) is complete.
+Sprint 7 (HTTP Security and Rate Limiting) is complete.
 
-The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs and structured HTTP logging using the built-in NestJS Logger.
+The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs, structured HTTP logging, Helmet security headers, response compression and in-memory rate limiting.
+
+## Current Functionality (Sprint 7)
+
+- Helmet security headers with explicit configuration
+- Response compression via middleware
+- Global API rate limiting with `@nestjs/throttler`
+- Stricter authentication rate limits for register, login and refresh
+- Standardized `429 Too Many Requests` responses
+- Optional `TRUST_PROXY` for reverse-proxy deployments
+- CORS intentionally disabled for this sprint
+
+## HTTP Security
+
+### Helmet
+
+Helmet is applied globally during application bootstrap before controllers handle requests.
+
+Configured protections include:
+
+- Content Security Policy with restrictive defaults
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options`
+- `Referrer-Policy`
+- `Strict-Transport-Security` in production-capable deployments
+- `hidePoweredBy: true` so framework information is not exposed
+
+Swagger UI trade-off: `/docs` requires inline scripts and styles. The CSP allows `'unsafe-inline'` only for `scriptSrc` and `styleSrc` on the self-hosted Swagger page. This is the minimum practical adjustment needed to keep `/docs` functional while retaining CSP elsewhere.
+
+### Response Compression
+
+The `compression` middleware is enabled globally with library defaults. It runs after Helmet and before NestJS route handling. JSON API responses and Swagger remain functional. Tiny responses are left uncompressed by the library threshold.
+
+### Rate Limiting
+
+Rate limiting uses `@nestjs/throttler` with in-memory storage.
+
+| Scope | Default limit | Window |
+|-------|---------------|--------|
+| General API | `100` requests | `60` seconds |
+| Authentication (`register`, `login`, `refresh`) | `10` requests | `60` seconds |
+
+Policy details:
+
+- `POST /api/v1/auth/register`, `POST /api/v1/auth/login` and `POST /api/v1/auth/refresh` use the stricter authentication limit
+- `POST /api/v1/auth/logout` uses the general API limit
+- `GET /api/v1/health` is excluded from rate limiting so health checks stay reachable
+- `/docs` is excluded from rate limiting so Swagger remains reachable
+
+When a limit is exceeded, the API returns:
+
+```json
+{
+  "statusCode": 429,
+  "error": "Too Many Requests",
+  "message": "Too many requests. Please try again later.",
+  "path": "/api/v1/auth/login",
+  "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "timestamp": "2026-07-13T00:00:00.000Z"
+}
+```
+
+Internal throttler state is never exposed in responses.
+
+### Rate-Limiting Limitations
+
+Current throttling is process-local. Each application instance tracks limits independently in memory.
+
+Multi-instance deployment would require shared storage later. Redis is not implemented in this sprint.
+
+### Reverse Proxy Support
+
+`TRUST_PROXY` defaults to `false`.
+
+Enable it only when the application runs behind a controlled reverse proxy that sets `X-Forwarded-For` correctly:
+
+```env
+TRUST_PROXY=true
+```
+
+When enabled, Express `trust proxy` is set to `1` so rate limiting can use the original client IP.
+
+### CORS
+
+CORS is intentionally not enabled in Sprint 7.
+
+The API does not use permissive settings such as `origin: '*'`, `origin: true`, or unrestricted credentials. Consumers deploying a separate frontend must configure an explicit allowlist later.
 
 ## Current Functionality (Sprint 6)
 
@@ -136,6 +222,7 @@ Validation failures return `400` with structured `details`:
 | Duplicate email | `409` | `Conflict` |
 | Unexpected server error | `500` | `Internal Server Error` |
 | Database unavailable | `503` | `Service Unavailable` |
+| Rate limit exceeded | `429` | `Too Many Requests` |
 
 ## Current Functionality (Sprint 4)
 
@@ -314,6 +401,11 @@ Copy `.env.example` to `.env` and adjust values as needed:
 | `JWT_ACCESS_EXPIRES_IN` | Access-token lifetime | `15m` |
 | `JWT_REFRESH_SECRET` | Refresh-token signing secret (min 32 chars) | placeholder in `.env.example` |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh-token lifetime | `7d` |
+| `THROTTLE_TTL_MS` | General rate-limit window in milliseconds | `60000` |
+| `THROTTLE_LIMIT` | Maximum general API requests per window | `100` |
+| `AUTH_THROTTLE_TTL_MS` | Authentication rate-limit window in milliseconds | `60000` |
+| `AUTH_THROTTLE_LIMIT` | Maximum auth requests per window | `10` |
+| `TRUST_PROXY` | Enable Express trust proxy behind a reverse proxy | `false` |
 
 The application fails during startup when supplied environment variables are invalid.
 
@@ -457,3 +549,13 @@ npm run build
 - Server-side logging for unknown and infrastructure errors
 - Safe application startup logging
 - Logging unit and e2e tests
+
+## Sprint 7 — HTTP Security and Rate Limiting (Complete)
+
+- Helmet security headers with Swagger-compatible CSP
+- Global response compression
+- General and authentication-specific rate limiting
+- Standardized `429 Too Many Requests` responses
+- Optional `TRUST_PROXY` for reverse-proxy deployments
+- Explicit CORS-disabled posture
+- Security and throttling unit and e2e tests

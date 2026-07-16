@@ -3,9 +3,11 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  HttpStatus,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { Response } from 'express';
@@ -83,6 +85,29 @@ describe('GlobalExceptionFilter', () => {
         requestId: 'req-123',
       }),
     );
+  });
+
+  it('formats ThrottlerException with the standard 429 shape', () => {
+    filter.catch(
+      new ThrottlerException('Too many requests. Please try again later.'),
+      createHost(),
+    );
+
+    expect(response.status).toHaveBeenCalledWith(HttpStatus.TOO_MANY_REQUESTS);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 429,
+        error: 'Too Many Requests',
+        message: 'Too many requests. Please try again later.',
+        path: '/api/v1/auth/login',
+        requestId: 'req-123',
+        timestamp: expect.any(String) as string,
+      }),
+    );
+
+    const body = getResponseBody();
+    expect(JSON.stringify(body)).not.toContain('ThrottlerException');
+    expect(errorLogSpy).not.toHaveBeenCalled();
   });
 
   it('formats ConflictException', () => {

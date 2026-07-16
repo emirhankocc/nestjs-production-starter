@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { configureApplication } from './../src/common/bootstrap/configure-application';
@@ -16,6 +17,11 @@ process.env.JWT_REFRESH_SECRET ??= 'b'.repeat(32);
 process.env.JWT_REFRESH_EXPIRES_IN ??= '7d';
 process.env.DATABASE_URL ??=
   'postgresql://postgres:postgres@localhost:5432/nestjs_starter?schema=public';
+process.env.THROTTLE_TTL_MS ??= '60000';
+process.env.THROTTLE_LIMIT ??= '100';
+process.env.AUTH_THROTTLE_TTL_MS ??= '60000';
+process.env.AUTH_THROTTLE_LIMIT ??= '10';
+process.env.TRUST_PROXY ??= 'false';
 
 function expectStandardErrorShape(body: ErrorResponseBody): void {
   expect(body).toEqual(
@@ -60,7 +66,7 @@ async function createConfiguredApp(overrides?: {
     .useValue(mockUsersService)
     .compile();
 
-  const app = moduleFixture.createNestApplication();
+  const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApplication(app, app.get(ConfigService));
   await app.init();
 

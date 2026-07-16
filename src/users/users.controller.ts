@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -16,9 +17,11 @@ import { AccessTokenGuard } from '../access-control/guards/access-token.guard';
 import type { AccessTokenPayload } from '../auth/types/auth.types';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { UsersService } from './users.service';
+import { THROTTLE_AUTH } from '../common/throttling/throttle.constants';
 
 @ApiTags('users')
 @Controller({ path: 'users', version: '1' })
+@SkipThrottle({ [THROTTLE_AUTH]: true })
 export class UsersController {
   private static readonly UNAUTHORIZED_MESSAGE = 'Unauthorized.';
 

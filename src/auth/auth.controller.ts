@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -15,9 +16,15 @@ import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
+import {
+  AuthThrottle,
+  GeneralThrottleOnly,
+} from '../common/throttling/auth-throttle.decorator';
+import { THROTTLE_DEFAULT } from '../common/throttling/throttle.constants';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
+@SkipThrottle({ [THROTTLE_DEFAULT]: true })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -30,6 +37,7 @@ export class AuthController {
   })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiConflictResponse({ description: 'Email is already registered' })
+  @AuthThrottle()
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -43,6 +51,7 @@ export class AuthController {
   })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiUnauthorizedResponse({ description: 'Invalid email or password' })
+  @AuthThrottle()
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -56,6 +65,7 @@ export class AuthController {
   })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiUnauthorizedResponse({ description: 'Invalid refresh token' })
+  @AuthThrottle()
   refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto);
   }
@@ -65,6 +75,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Revoke the current refresh session' })
   @ApiNoContentResponse({ description: 'Logout completed' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
+  @GeneralThrottleOnly()
   logout(@Body() dto: LogoutDto): Promise<void> {
     return this.authService.logout(dto);
   }

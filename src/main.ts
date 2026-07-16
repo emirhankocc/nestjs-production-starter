@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { configureApplication } from './common/bootstrap/configure-application';
@@ -8,7 +9,7 @@ import { logApplicationStarted } from './common/bootstrap/log-application-starte
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
