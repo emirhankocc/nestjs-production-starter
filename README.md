@@ -1,12 +1,86 @@
 # NestJS Production Starter
 
+![CI](https://github.com/emirhankocc/nestjs-production-starter/actions/workflows/ci.yml/badge.svg)
+
 A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, Prisma, JWT and Docker.
 
 ## Status
 
-Sprint 8 (Production Docker) is complete.
+Sprint 9 (GitHub Actions CI) is complete.
 
-The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs, structured HTTP logging, Helmet security headers, response compression, in-memory rate limiting and a production-oriented multi-stage Docker image.
+The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs, structured HTTP logging, Helmet security headers, response compression, in-memory rate limiting, a production-oriented multi-stage Docker image and GitHub Actions CI.
+
+## Current Functionality (Sprint 9)
+
+- GitHub Actions workflow for `push` and `pull_request` to `main`
+- PostgreSQL 16 service container for CI database checks
+- Quality job: Prisma validation, migration deploy, lint, unit tests, e2e tests and build
+- Separate Docker image build verification job
+- Read-only workflow permissions and concurrency cancellation
+- Production dependency audit at high severity only
+
+## Continuous Integration
+
+Workflow file: `.github/workflows/ci.yml`
+
+### Triggers
+
+- `push` to `main`
+- `pull_request` to `main`
+
+### Quality job
+
+Runs on `ubuntu-latest` with Node.js 22, npm cache and a PostgreSQL 16 service container.
+
+Checks performed:
+
+1. `npm ci`
+2. `npx prisma validate`
+3. `npx prisma generate`
+4. `npx prisma migrate deploy`
+5. `npm run lint`
+6. `npm run test -- --runInBand`
+7. `npm run test:e2e -- --runInBand`
+8. `npm run build`
+9. `npm audit --omit=dev --audit-level=high`
+
+CI uses safe non-production test values only. No repository secrets are required for these checks.
+
+### Docker build job
+
+Runs after the quality job succeeds.
+
+- checks out the repository
+- uses Docker Buildx
+- builds the production `Dockerfile`
+- tags the image locally as `nestjs-production-starter:ci`
+- does not push to Docker Hub, GHCR or any registry
+
+### CI scope
+
+This workflow verifies code quality and image buildability only.
+
+It does not:
+
+- deploy the application
+- publish container images
+- configure production secrets in GitHub Actions
+- run CD or release automation
+
+### Local commands equivalent to CI
+
+```bash
+npm ci
+npx prisma validate
+npx prisma generate
+npx prisma migrate deploy
+npm run lint
+npm run test -- --runInBand
+npm run test:e2e -- --runInBand
+npm run build
+npm audit --omit=dev --audit-level=high
+docker build -t nestjs-production-starter:ci .
+```
 
 ## Current Functionality (Sprint 8)
 
@@ -139,7 +213,7 @@ docker compose --env-file .env.production -f docker-compose.production.yml down
 
 This sprint does not include:
 
-- GitHub Actions CI
+- continuous deployment
 - Nginx
 - HTTPS / automatic TLS
 - Kubernetes
@@ -723,3 +797,12 @@ npm run build
 - One-off `prisma migrate deploy` workflow
 - Node-based production API health checks
 - Docker configuration unit tests
+
+## Sprint 9 — GitHub Actions CI (Complete)
+
+- `.github/workflows/ci.yml` for `main` branch verification
+- PostgreSQL 16 service container in CI
+- Quality checks for Prisma, lint, tests and build
+- Separate Docker image build verification job
+- Read-only permissions, concurrency control and job timeouts
+- CI workflow unit tests
