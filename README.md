@@ -4,9 +4,147 @@ A production-oriented NestJS backend starter built with TypeScript, PostgreSQL, 
 
 ## Status
 
-Sprint 7 (HTTP Security and Rate Limiting) is complete.
+Sprint 8 (Production Docker) is complete.
 
-The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs, structured HTTP logging, Helmet security headers, response compression and in-memory rate limiting.
+The project currently provides environment configuration, API versioning, request validation, Swagger documentation, PostgreSQL via Docker Compose, Prisma ORM integration, a database-aware health-check endpoint, JWT authentication with refresh-token rotation, role-based authorization, standardized API error responses with request IDs, structured HTTP logging, Helmet security headers, response compression, in-memory rate limiting and a production-oriented multi-stage Docker image.
+
+## Current Functionality (Sprint 8)
+
+- Multi-stage production Dockerfile on Node 22 LTS slim
+- Non-root production runtime container
+- Production Compose stack for API and PostgreSQL
+- One-off production migration flow with `prisma migrate deploy`
+- Development PostgreSQL port override through `POSTGRES_HOST_PORT`
+- Node-based API health checks in production Compose
+
+## Production Docker
+
+### Image design
+
+The production image uses three stages:
+
+1. **dependencies** — reproducible `npm ci`
+2. **build** — Prisma Client generation and NestJS compilation
+3. **production** — runtime dependencies, generated Prisma Client, compiled app and migration files only
+
+The final container:
+
+- runs as the dedicated `nestjs` user (UID `1001`)
+- sets `NODE_ENV=production`
+- starts with `node dist/src/main.js`
+- does not bake secrets or `.env` files into the image
+- intentionally includes the Prisma CLI so one-off `prisma migrate deploy` commands can reuse the same API image
+
+Prisma CLI trade-off: the production runtime keeps Prisma CLI on purpose. This increases image size, but it avoids a separate migration image and keeps production migration commands simple and explicit. Migrations are not run automatically on every API container restart; they are executed separately with `docker compose run --rm api npx prisma migrate deploy`.
+
+Package metadata: `private: true` in `package.json` prevents accidental publication to the public npm registry. It does not make the GitHub repository private.
+
+### Development PostgreSQL
+
+Start the development database:
+
+```bash
+docker compose up -d
+```
+
+If local port `5432` is already in use on Windows or another machine, override only the host port without changing the tracked Compose file:
+
+```powershell
+$env:POSTGRES_HOST_PORT="5434"
+docker compose up -d
+```
+
+Update `DATABASE_URL` in your local `.env` to match the host port you choose.
+
+### Production environment
+
+Copy the production example file and replace every placeholder with real values:
+
+```bash
+cp .env.production.example .env.production
+```
+
+Important:
+
+- never commit `.env.production`
+- `POSTGRES_PASSWORD` and `DATABASE_URL` must stay consistent
+- use different values for `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`
+
+### Build the production image
+
+```bash
+docker build --no-cache -t nestjs-production-starter-api .
+```
+
+### Production startup
+
+Start PostgreSQL:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml up -d postgres
+```
+
+Run migrations once with a one-off command:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml run --rm api npx prisma migrate deploy
+```
+
+Start the API:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml up -d api
+```
+
+Or start the full production stack after migrations:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml up -d
+```
+
+### Production operations
+
+Health check:
+
+```bash
+curl http://localhost:3000/api/v1/health
+```
+
+View logs:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml logs -f api
+```
+
+Graceful shutdown:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml stop api
+```
+
+Stop the full production stack:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml down
+```
+
+### Migration safety
+
+- use `npx prisma migrate deploy` in production
+- do not use `prisma migrate dev` in production containers
+- do not use `prisma db push` in production
+- migrations are not executed automatically on every API container restart
+
+### Production limitations
+
+This sprint does not include:
+
+- GitHub Actions CI
+- Nginx
+- HTTPS / automatic TLS
+- Kubernetes
+- container registry publishing
+- VPS deployment automation
 
 ## Current Functionality (Sprint 7)
 
@@ -396,6 +534,7 @@ Copy `.env.example` to `.env` and adjust values as needed:
 | `PORT` | HTTP server port | `3000` |
 | `API_PREFIX` | Global API route prefix | `api` |
 | `API_VERSION` | Default URI API version | `1` |
+| `POSTGRES_HOST_PORT` | Host port for development PostgreSQL | `5432` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/nestjs_starter?schema=public` |
 | `JWT_ACCESS_SECRET` | Access-token signing secret (min 32 chars) | placeholder in `.env.example` |
 | `JWT_ACCESS_EXPIRES_IN` | Access-token lifetime | `15m` |
@@ -435,7 +574,14 @@ Stop the local PostgreSQL container:
 docker compose down
 ```
 
-If port `5432` is already in use on your machine, stop the conflicting PostgreSQL instance before starting Docker Compose.
+If port `5432` is already in use on your machine, override the host port without editing `docker-compose.yml`:
+
+```powershell
+$env:POSTGRES_HOST_PORT="5434"
+docker compose up -d
+```
+
+Then point `DATABASE_URL` in `.env` to the same host port.
 
 Apply database migrations:
 
@@ -446,7 +592,13 @@ npx prisma migrate dev --name init_user_and_refresh_session
 Generate the Prisma client:
 
 ```bash
-npx prisma generate
+npm run prisma:generate
+```
+
+Apply production migrations on a deployed environment:
+
+```bash
+npm run prisma:migrate:deploy
 ```
 
 Promote a user to `ADMIN` in the development database:
@@ -485,6 +637,7 @@ Example health response:
 
 ```bash
 npm run lint
+npm run lint:fix
 npm run test
 npm run build
 ```
@@ -559,3 +712,14 @@ npm run build
 - Optional `TRUST_PROXY` for reverse-proxy deployments
 - Explicit CORS-disabled posture
 - Security and throttling unit and e2e tests
+
+## Sprint 8 — Production Docker (Complete)
+
+- Multi-stage production Dockerfile on Node 22 LTS slim
+- `.dockerignore` for lean build contexts
+- Non-root production runtime user
+- Production Compose stack for API and PostgreSQL
+- `.env.production.example` with documented placeholders
+- One-off `prisma migrate deploy` workflow
+- Node-based production API health checks
+- Docker configuration unit tests
